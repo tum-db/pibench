@@ -268,6 +268,7 @@ void benchmark_t::run() noexcept
 
     // Current id after load
     uint64_t current_id = key_generator_->current_id_;
+    key_generator_->next_id_ = opt_.num_records;
 
     pid_t perf_pid;
     if (opt_.enable_perf)
@@ -394,7 +395,7 @@ void benchmark_t::run() noexcept
                     const char *key_ptr = nullptr;
                     if (op == operation_t::INSERT)
                     {
-                        key_ptr = key_generator_->next(true);
+                        key_ptr = key_generator_->fetch_next();
                     }
                     else
                     {
