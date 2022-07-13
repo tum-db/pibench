@@ -124,6 +124,20 @@ benchmark_t::~benchmark_t()
         pcm_->cleanup();
 }
 
+std::string exec(const std::string& cmd) {
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+  if (!pipe) {
+    throw std::runtime_error("popen() failed!");
+  }
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+  return result;
+}
+
+
 void benchmark_t::load() noexcept
 {
     if(opt_.skip_load)
@@ -219,6 +233,25 @@ void benchmark_t::run() noexcept
 
     // Current id after load
     uint64_t current_id = key_generator_->current_id_;
+
+
+    if (opt_.log_pmemstate) {
+      // Take a snapshot of the current PMem-state.
+      // This is hacky, as it assumes there is a script with that name in the current execution directory.
+      // We've provided the script
+      std::string optype;
+
+      if (opt_.read_ratio == 1) {
+          optype= "lookup";
+      } else if (opt_.insert_ratio == 1) {
+          optype = "insert";
+      } else {
+          optype = "???";
+      }
+
+      exec("./logpmemstate.sh " + opt_.name + " " + optype + " pre");
+    }
+
 
     std::unique_ptr<SystemCounterState> before_sstate;
     if (opt_.enable_pcm)
@@ -354,6 +387,22 @@ void benchmark_t::run() noexcept
         }
     }
     omp_set_nested(false);
+    if (opt_.log_pmemstate) {
+      // Take a snapshot of the current PMem-state.
+      // This is hacky, as it assumes there is a script with that name in the current execution directory.
+      // We've provided the script
+      std::string optype;
+
+      if (opt_.read_ratio == 1) {
+        optype= "lookup";
+      } else if (opt_.insert_ratio == 1) {
+        optype = "insert";
+      } else {
+        optype = "???";
+      }
+
+      exec("./logpmemstate.sh " + opt_.name + " " + optype + " post");
+    }
 
     std::unique_ptr<SystemCounterState> after_sstate;
     if (opt_.enable_pcm)
@@ -570,6 +619,47 @@ void benchmark_t::run_op(operation_t op, const char *key_ptr,
     ++stats.operation_count;
 }
 
+void benchmark_t::measure_size() {
+  // We just fill the data structure until we run out of memory and periodically measure PMEM and DRAM consumption
+
+  std::cout << "Measuring size started." << std::endl;
+  stopwatch_t sw;
+  sw.start();
+
+  int iterations = 5000; //TODO: Just some magic constant - could definitely be solved more elegantly ;)
+  for (int iteration = 1; iteration < iterations; ++iteration) {
+
+    {
+#pragma omp parallel num_threads(opt_.num_threads)
+      {
+        // Initialize insert id for each thread
+        key_generator_->current_id_ =
+            iteration * opt_.num_records +
+            opt_.num_records / opt_.num_threads * omp_get_thread_num();
+
+#pragma omp for schedule(static)
+        for (uint64_t i = 0; i < opt_.num_ops; ++i) {
+          // Generate key in sequence
+          auto key_ptr = key_generator_->next(true);
+
+          // Generate random value
+          auto value_ptr = value_generator_.next();
+
+          auto r = tree_->insert(key_ptr, key_generator_->size(), value_ptr,
+                                 opt_.value_size);
+          assert(r);
+        }
+      }
+    }
+
+    long ops = iteration * opt_.num_ops;
+
+    exec(std::string("printf \"" + opt_.name + ",") + std::to_string(ops) +
+         std::string(",$(cat /proc/$(pidof PiBench)/status | grep \"VmRSS\" | awk '{print $2}')") + // DRAM consumption
+         std::string("," + std::to_string(tree_->get_size() / 1024) + "\n\"") + // PMem consumption
+         std::string(" >> size.csv"));
+  }
+}
 } // namespace PiBench
 
 namespace std

@@ -28,6 +28,8 @@ int main(int argc, char** argv)
             ("input", "Absolute path to library file", cxxopts::value<std::string>())
             ("n,records", "Number of records to load", cxxopts::value<uint64_t>()->default_value(std::to_string(opt.num_records)))
             ("p,operations", "Number of operations to execute", cxxopts::value<uint64_t>()->default_value(std::to_string(opt.num_ops)))
+            ("l,log_pmemstate", "Should the PMem dimm state be logged?", cxxopts::value<bool>()->default_value((opt.log_pmemstate ? "true" : "false")))
+            ("S,size_mode", "Should we just endlessly insert elements and report the size?", cxxopts::value<bool>()->default_value((opt.log_pmemstate ? "true" : "false")))
             ("t,threads", "Number of threads to use", cxxopts::value<uint32_t>()->default_value(std::to_string(opt.num_threads)))
             ("f,key_prefix", "Prefix string prepended to every key", cxxopts::value<std::string>()->default_value("\"" + opt.key_prefix + "\""))
             ("k,key_size", "Size of keys in Bytes (without prefix)", cxxopts::value<uint32_t>()->default_value(std::to_string(opt.key_size)))
@@ -48,6 +50,7 @@ int main(int argc, char** argv)
             ("skip_load", "Skip the load phase", cxxopts::value<bool>()->default_value((opt.skip_load ? "true" : "false")))
             ("latency_sampling", "Sample latency of requests", cxxopts::value<float>()->default_value(std::to_string(opt.latency_sampling)))
             ("m,mode","Benchmark mode",cxxopts::value<std::string>()->default_value("operation"))
+            ("a,name","Name of the data structure", cxxopts::value<std::string>()->default_value("unknown"))
             ("seconds","Time (seconds) PiBench run in time-based mode",cxxopts::value<float>()->default_value(std::to_string(opt.seconds)))
             ("help", "Print help")
         ;
@@ -69,6 +72,18 @@ int main(int argc, char** argv)
         if (result.count("skip_load"))
         {
             opt.skip_load = result["skip_load"].as<bool>();
+        }
+
+        if (result.count("log_pmemstate")) {
+          opt.log_pmemstate = result["log_pmemstate"].as<bool>();
+        }
+
+        if (result.count("size_mode")) {
+          opt.size_mode = result["size_mode"].as<bool>();
+        }
+
+        if (result.count("name")) {
+          opt.name = result["name"].as<std::string>();
         }
 
         if (result.count("latency_sampling"))
@@ -283,8 +298,14 @@ int main(int argc, char** argv)
     }
 
     benchmark_t bench(tree, opt);
-    bench.load();
-    bench.run();
+
+    if (opt.size_mode) {
+      bench.measure_size();
+    } else {
+      bench.load();
+      bench.run();
+    }
+
 
     delete tree;
     return 0;

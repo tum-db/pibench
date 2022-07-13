@@ -44,8 +44,17 @@ enum class distribution_t : uint8_t
  */
 struct options_t
 {
+    /// Name of the data structure
+    std::string name = "";
+
     /// Name of tree library file used to run the benchmark against.
     std::string library_file = "";
+
+    /// Should the script to log the lifetime read- and write cycles of the PMEM dimms be executed?
+    bool log_pmemstate = false;
+
+    /// Should we just endlessly insert elements and report the size?
+    bool size_mode = false;
 
     /// Number of records to insert into tree during 'load' phase.
     uint64_t num_records = 1e6;
@@ -194,6 +203,9 @@ public:
      * equivalent, results.
      */
     void load() noexcept;
+
+
+    void measure_size();
 
     /// Run the workload as specified by options_t.
     void run() noexcept;

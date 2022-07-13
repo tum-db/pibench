@@ -111,6 +111,8 @@ public:
      * return scanned;
      */
     virtual int scan(const char* key, size_t key_sz, int scan_sz, char*& values_out) = 0;
+
+    virtual long get_size() = 0;
 };
 
 #endif
